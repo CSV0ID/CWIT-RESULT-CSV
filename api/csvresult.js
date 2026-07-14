@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const readline = require('readline');
 
 const DEPT_MAP = {
   civil: 'Civil Engineering', electrical: 'Electrical Engineering',
@@ -29,27 +28,60 @@ function sendTelegram(msg) {
   });
 }
 
-function parseCSVLine(line) {
+function parseLine(line) {
   const result = [];
   let current = '', inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
       if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '"';
-        i++;
+        current += '"'; i++;
       } else {
         inQuotes = !inQuotes;
       }
     } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
+      result.push(current); current = '';
     } else {
       current += ch;
     }
   }
   result.push(current);
   return result;
+}
+
+function parseCSV(text) {
+  const lines = [];
+  let current = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && i + 1 < text.length && text[i + 1] === '"') {
+        current += '"'; i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === '\n' && !inQuotes) {
+      lines.push(current); current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current) lines.push(current);
+  if (!lines.length) return { headers: [], rows: [] };
+  const headers = parseLine(lines[0]);
+  const rows = [];
+  let mismatchCount = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseLine(lines[i]);
+    if (vals.length && vals.length === headers.length) {
+      const obj = {};
+      headers.forEach((h, idx) => { obj[h] = vals[idx]; });
+      rows.push(obj);
+    } else {
+      mismatchCount++;
+    }
+  }
+  return { headers, rows, totalLines: lines.length - 1, mismatchCount };
 }
 
 function parseRawSubjects(rawJson) {
@@ -114,9 +146,7 @@ function parseRawSubjects(rawJson) {
         if (v >= 100) {
           for (let k = idx - 1; k >= 0; k--) {
             const [pj, pv] = digitCore[k];
-            if (j - pj <= 3 && pv < v) {
-              totalMax = v; totalObt = pv; break;
-            }
+            if (j - pj <= 3 && pv < v) { totalMax = v; totalObt = pv; break; }
           }
           if (!totalMax) { totalMax = v; }
           break;
@@ -128,7 +158,7 @@ function parseRawSubjects(rawJson) {
       }
       if (totalMax) s.totalMax = String(totalMax);
       if (totalObt) s.totalObt = String(totalObt);
-      if (totalMax \&\& totalObt) s.totalPct = String(Math.round((totalObt / totalMax) * 100));
+      if (totalMax && totalObt) s.totalPct = String(Math.round((totalObt / totalMax) * 100));
 
       subjects.push(s);
     }
@@ -158,35 +188,6 @@ function formatTg(student, type, email, fp, ip) {
   return msg;
 }
 
-async function findStudent(csvFile, roll, deptName) {
-  return new Promise((resolve, reject) => {
-    const stream = fs.createReadStream(csvFile, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-    let headers = null;
-    let found = null;
-
-    rl.on('line', (line) => {
-      if (found) return;
-      const vals = parseCSVLine(line);
-      if (!headers) {
-        headers = vals;
-        return;
-      }
-      if (vals.length !== headers.length) return;
-      const obj = {};
-      headers.forEach((h, idx) => { obj[h] = vals[idx]; });
-      if (obj.RollNumber === roll && obj.Department === deptName) {
-        found = obj;
-      }
-    });
-
-    rl.on('close', () => resolve(found));
-    rl.on('error', reject);
-    stream.on('error', reject);
-  });
-}
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
@@ -207,17 +208,18 @@ module.exports = async (req, res) => {
     ? path.join(__dirname, '..', 'cwit_s26_backlog_results.csv')
     : path.join(__dirname, '..', 'cwit_s26_regular_published_with_raw.csv');
 
-  if (!fs.existsSync(csvFile)) {
-    return res.status(500).json({ error: 'CSV file not found' });
-  }
-
   try {
-    const student = await findStudent(csvFile, roll, deptName);
+    const text = fs.readFileSync(csvFile, 'utf-8');
+    const parsed = parseCSV(text);
+    const { rows } = parsed;
 
-    if (!student) {
-      return res.status(200).json({ found: false, student: null, dept: deptName });
+    const matches = rows.filter(r => r.RollNumber === roll && r.Department === deptName);
+
+    if (!matches.length) {
+      return res.status(200).json({ found: false, student: null, dept: deptName, debug: { totalRows: rows.length, totalLines: parsed.totalLines, mismatches: parsed.mismatchCount } });
     }
 
+    const student = matches[0];
     let subjects = [];
     if (type === 'backlog') {
       for (let i = 1; i <= 9; i++) {
