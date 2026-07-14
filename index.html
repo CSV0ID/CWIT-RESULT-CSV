@@ -53,7 +53,7 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
 <body>
 <div class="container">
   <h1>CWIT Pune — S26 CSV Result</h1>
-  <p class="subtitle">Lookup from saved CSV &bull; Telegram notify</p>
+  <p class="subtitle">Lookup from saved CSV &bull; Email notify</p>
 
   <div class="controls">
     <div class="field">
@@ -85,10 +85,10 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
   <div id="output"></div>
 
   <div class="email-section" id="emailSection" style="display:none">
-    <label>Email (optional — for contact on Telegram)</label>
+    <label>Email (optional — for contact on Email)</label>
     <div class="email-row">
       <input type="email" id="emailInput" placeholder="Your email for follow-up">
-      <button class="btn btn-mail" onclick="resendTelegram()">Re-send to Telegram</button>
+      <button class="btn btn-mail" onclick="resendEmail()">Re-send to Email</button>
     </div>
     <div id="emailStatus" style="color:#94a3b8;font-size:11px;margin-top:4px"></div>
   </div>
@@ -228,7 +228,7 @@ function resendTelegram() {
 
   fetch('/api/csvresult?type='+lastType+'&dept='+dept+'&roll='+encodeURIComponent(roll)+emailParam+'&fp='+encodeURIComponent(DEVICE_FP))
     .then(r => r.json())
-    .then(() => { status.textContent = 'Sent to Telegram. Check your bot.'; })
+    .then(() => { status.textContent = 'Sent to Email. Check your Mail.'; })
     .catch(() => { status.textContent = 'Failed.'; });
 }
 
