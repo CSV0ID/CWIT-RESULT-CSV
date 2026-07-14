@@ -11,6 +11,16 @@ const DEPT_MAP = {
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+let regularLookup = null;
+
+function getRegularLookup() {
+  if (!regularLookup) {
+    const fp = path.join(__dirname, '..', 'regular.json');
+    regularLookup = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  }
+  return regularLookup;
+}
+
 function sendTelegram(msg) {
   return new Promise((resolve) => {
     if (!BOT_TOKEN || !CHAT_ID) return resolve();
@@ -26,69 +36,6 @@ function sendTelegram(msg) {
     req.write(data);
     req.end();
   });
-}
-
-function parseLine(line) {
-  const result = [];
-  let current = '', inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '"'; i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current); current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
-
-function parseCSV(text) {
-  const lines = [];
-  let current = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '"') {
-      if (inQuotes && i + 1 < text.length && text[i + 1] === '"') {
-        current += '"'; i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === '\n' && !inQuotes) {
-      lines.push(current); current = '';
-    } else {
-      current += ch;
-    }
-  }
-  if (current) lines.push(current);
-  if (!lines.length) return { headers: [], rows: [] };
-  const headers = parseLine(lines[0]);
-  const rows = [];
-  let mismatchCount = 0;
-  let sampleHeaderLen = headers.length;
-  let sampleValsLen = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const vals = parseLine(lines[i]);
-    if (i === 1) sampleValsLen = vals.length;
-    if (vals.length && vals.length === headers.length) {
-      const obj = {};
-      headers.forEach((h, idx) => { obj[h] = vals[idx]; });
-      rows.push(obj);
-    } else {
-      mismatchCount++;
-      if (mismatchCount <= 1) {
-        sampleHeaderLen = headers.length;
-        sampleValsLen = vals.length;
-      }
-    }
-  }
-  return { headers, rows, totalLines: lines.length - 1, mismatchCount, sampleHeaderLen, sampleValsLen };
 }
 
 function parseRawSubjects(rawJson) {
@@ -211,22 +158,38 @@ module.exports = async (req, res) => {
   const deptName = DEPT_MAP[dept];
   if (!deptName) return res.status(400).json({ error: 'Invalid department' });
 
-  const csvFile = type === 'backlog'
-    ? path.join(__dirname, '..', 'cwit_s26_backlog_results.csv')
-    : path.join(__dirname, '..', 'cwit_s26_regular_published_with_raw.csv');
-
   try {
-    const text = fs.readFileSync(csvFile, 'utf-8');
-    const parsed = parseCSV(text);
-    const { rows } = parsed;
+    let student = null;
 
-    const matches = rows.filter(r => r.RollNumber === roll && r.Department === deptName);
-
-    if (!matches.length) {
-      return res.status(200).json({ found: false, student: null, dept: deptName, debug: { totalRows: rows.length, totalLines: parsed.totalLines, mismatches: parsed.mismatchCount } });
+    if (type === 'backlog') {
+      const csvFile = path.join(__dirname, '..', 'cwit_s26_backlog_results.csv');
+      const text = fs.readFileSync(csvFile, 'utf-8');
+      const lines = text.split('\n');
+      const headers = lines[0].replace(/\r$/, '').split(',');
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].replace(/\r$/, '');
+        if (!line) continue;
+        const vals = line.split(',');
+        if (vals.length !== headers.length) continue;
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h] = vals[idx]; });
+        if (obj.RollNumber === roll && obj.Department === deptName) {
+          student = obj;
+          break;
+        }
+      }
+    } else {
+      const lookup = getRegularLookup();
+      const entry = lookup[roll];
+      if (entry && entry.d === deptName) {
+        student = { RollNumber: roll, StudentName: entry.n, Department: entry.d, Semester: entry.s, resultStatus: entry.st, SGPA: entry.g, _raw_json: entry.r };
+      }
     }
 
-    const student = matches[0];
+    if (!student) {
+      return res.status(200).json({ found: false, student: null, dept: deptName });
+    }
+
     let subjects = [];
     if (type === 'backlog') {
       for (let i = 1; i <= 9; i++) {
@@ -242,8 +205,7 @@ module.exports = async (req, res) => {
         });
       }
     } else {
-      const raw = (student._raw_json || '').replace(/\r$/, '');
-      subjects = parseRawSubjects(raw);
+      subjects = parseRawSubjects(student._raw_json);
     }
 
     const result = {
