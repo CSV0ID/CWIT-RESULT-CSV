@@ -128,6 +128,7 @@ function parseRawSubjects(rawJson) {
       }
       if (totalMax) s.totalMax = String(totalMax);
       if (totalObt) s.totalObt = String(totalObt);
+      if (totalMax \&\& totalObt) s.totalPct = String(Math.round((totalObt / totalMax) * 100));
 
       subjects.push(s);
     }
