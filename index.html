@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CWIT Pune - S26 CSV Result</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;min-height:100dvh;display:flex;justify-content:center;align-items:flex-start;padding:24px 16px}
+.container{background:#1e293b;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.3);width:100%;max-width:1050px;padding:24px 20px;border:1px solid #334155}
+h1{font-size:18px;color:#f1f5f9;margin-bottom:4px}
+.subtitle{color:#94a3b8;font-size:12px;margin-bottom:20px}
+.controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:end}
+.controls .field{flex:1;min-width:140px}
+.controls label{display:block;color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.controls select,.controls input{padding:10px 12px;border:1px solid #475569;border-radius:8px;font-size:14px;background:#0f172a;color:#f1f5f9;width:100%}
+.controls select:focus,.controls input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.2)}
+::placeholder{color:#64748b}
+.btn{background:#6366f1;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;height:42px}
+.btn:hover{background:#4f46e5}.btn:disabled{opacity:.5;cursor:not-allowed}
+.student-info{color:#f1f5f9;font-size:14px;font-weight:600;margin-bottom:12px;padding:10px 14px;background:#0f172a;border-radius:10px;border:1px solid #334155}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #334155;border-radius:10px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;padding:7px 8px;font-weight:600;color:#94a3b8;border-bottom:1px solid #334155;font-size:9px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;background:#0f172a}
+td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:nowrap}
+.pass{color:#4ade80;font-weight:600}
+.fail{color:#f87171;font-weight:600}
+.sgpa{color:#f1f5f9;padding:8px 14px;text-align:right;font-size:13px;font-weight:600;border-top:1px solid #334155;background:#0f172a;border-radius:0 0 10px 10px}
+.not-found{padding:30px;text-align:center;color:#64748b;font-size:13px}
+.error-box{background:#451a1a;color:#fca5a5;padding:12px;border-radius:8px;font-size:13px;margin-top:10px;border:1px solid #7f1d1d}
+.spinner{display:none;text-align:center;color:#94a3b8;font-size:13px;padding:12px 0}
+.spinner-inline{display:inline-block;width:20px;height:20px;border:3px solid #334155;border-top-color:#6366f1;border-radius:50%;animation:spin .6s linear infinite;margin-right:6px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:700px){
+  body{padding:12px 8px}
+  .container{padding:14px 10px}
+  .controls{flex-direction:column}
+  .controls .field{min-width:100%}
+  .btn{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>CWIT Pune — S26 CSV Result</h1>
+  <p class="subtitle">Lookup from saved CSV (no live API)</p>
+
+  <div class="controls">
+    <div class="field">
+      <label>Result Type</label>
+      <select id="resultType">
+        <option value="regular">S26 Regular</option>
+        <option value="backlog">S26 Backlog</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Department</label>
+      <select id="department">
+        <option value="comp">Computer Engineering</option>
+        <option value="comp_iot">Computer Engineering & IoT</option>
+        <option value="civil">Civil Engineering</option>
+        <option value="electrical">Electrical Engineering</option>
+        <option value="mechanical">Mechanical Engineering</option>
+        <option value="etc">Electronics & Telecommunication Engg</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>PRN</label>
+      <input type="text" id="rollInput" placeholder="e.g. 244039">
+    </div>
+    <button class="btn" id="searchBtn" onclick="searchResult()">Search</button>
+  </div>
+
+  <div class="spinner" id="spinner"><span class="spinner-inline"></span>Searching...</div>
+  <div id="output"></div>
+</div>
+
+<script>
+const DEPT_LABELS = {
+  civil:'Civil Engineering', electrical:'Electrical Engineering',
+  mechanical:'Mechanical Engineering', etc:'Electronics & Telecommunication Engineering',
+  comp:'Computer Engineering', comp_iot:'Computer Engineering & IoT',
+};
+
+function maskRoll(r) { return r && r.length > 3 ? r.slice(0, -3) + '***' : r; }
+
+function v(val, fb) { return (val !== undefined && val !== null && val !== '') ? val : (fb || '-'); }
+
+function buildRegularTable(subs) {
+  let h = '<div class="table-wrap"><table><thead><tr>'+
+    '<th>#</th><th>Subject</th><th>Code</th>'+
+    '<th>FA-TH</th><th>SA-TH</th><th>TH</th><th>TH%</th><th>TH-P</th>'+
+    '<th>FA-PR</th><th>SA-PR</th><th>SLA</th>'+
+    '<th>Total</th><th>%</th><th>Status</th><th>Cr</th>'+
+  '</tr></thead><tbody>';
+  subs.forEach((s, i) => {
+    const st = v(s.status, 'Fail');
+    const thPassCls = s.thPass === 'Pass' ? 'pass' : 'fail';
+    h += '<tr><td>'+(i+1)+'</td><td><strong>'+(s.name||'')+'</strong></td><td>'+(s.code||'')+'</td>';
+    h += '<td>'+v(s.faTh)+'</td><td>'+v(s.saTh)+'</td>';
+    h += '<td>'+v(s.thObt)+'/'+v(s.thMax)+'</td><td>'+v(s.thPct)+'%</td>';
+    h += '<td class="'+thPassCls+'">'+v(s.thPass)+'</td>';
+    h += '<td>'+v(s.faPr)+'</td><td>'+v(s.saPr)+'</td><td>'+v(s.sla)+'</td>';
+    h += '<td><strong>'+v(s.totalObt)+'</strong>/'+v(s.totalMax)+'</td>';
+    h += '<td>'+v(s.totalPct)+'%</td>';
+    h += '<td class="'+st.toLowerCase()+'">'+st+'</td>';
+    h += '<td>'+v(s.cr,'0')+'</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+function buildBacklogTable(subs) {
+  let h = '<div class="table-wrap"><table><thead><tr>'+
+    '<th>#</th><th>Subject</th><th>Code</th>'+
+    '<th>TH</th><th>TH-P</th><th>Total</th><th>%</th><th>Status</th><th>Cr</th><th>Practicals</th>'+
+  '</tr></thead><tbody>';
+  subs.forEach((s, i) => {
+    const st = v(s.status, 'Fail');
+    const thPassCls = s.thPass === 'Pass' ? 'pass' : 'fail';
+    h += '<tr><td>'+(i+1)+'</td><td><strong>'+(s.name||'')+'</strong></td><td>'+(s.code||'')+'</td>';
+    h += '<td>'+v(s.th)+'</td><td class="'+thPassCls+'">'+v(s.thPass)+'</td>';
+    h += '<td>'+v(s.total)+'</td><td>'+v(s.pct)+'%</td>';
+    h += '<td class="'+st.toLowerCase()+'">'+st+'</td>';
+    h += '<td>'+v(s.cr,'0')+'</td><td>'+v(s.practicals)+'</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+async function searchResult() {
+  const type = document.getElementById('resultType').value;
+  const dept = document.getElementById('department').value;
+  const roll = document.getElementById('rollInput').value.trim();
+  const out = document.getElementById('output');
+  const spin = document.getElementById('spinner');
+  const btn = document.getElementById('searchBtn');
+
+  if (!roll) { out.innerHTML = '<div class="error-box">Enter a PRN</div>'; return; }
+  spin.style.display = 'block'; btn.disabled = true; out.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/csvresult?type='+type+'&dept='+dept+'&roll='+encodeURIComponent(roll));
+    const data = await res.json();
+    if (data.error) { out.innerHTML = '<div class="error-box">'+data.error+'</div>'; return; }
+
+    if (!data.found) {
+      out.innerHTML = '<div class="not-found">No result found for <strong>'+roll+'</strong> in '+DEPT_LABELS[dept]+' ('+(type==='regular'?'S26 Regular':'S26 Backlog')+')</div>';
+      return;
+    }
+
+    const semLabel = type === 'regular' ? 'S26 Regular' : 'S26 Backlog';
+    let html = '<div class="student-info">'+data.name+' ('+maskRoll(data.roll)+') &bull; '+data.dept+' &bull; '+semLabel+'</div>';
+    if (data.sgpa) html += '<div class="student-info" style="font-weight:400;font-size:13px">SGPA: '+data.sgpa+'</div>';
+
+    if (data.subjects && data.subjects.length) {
+      html += type === 'regular' ? buildRegularTable(data.subjects) : buildBacklogTable(data.subjects);
+    } else {
+      html += '<div class="not-found">No subject data in CSV</div>';
+    }
+    out.innerHTML = html;
+  } catch(e) {
+    out.innerHTML = '<div class="error-box">Request failed: '+e.message+'</div>';
+  } finally {
+    spin.style.display = 'none'; btn.disabled = false;
+  }
+}
+
+document.getElementById('rollInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchResult(); });
+</script>
+</body>
+</html>
