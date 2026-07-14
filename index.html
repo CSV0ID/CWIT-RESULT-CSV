@@ -31,19 +31,29 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
 .spinner{display:none;text-align:center;color:#94a3b8;font-size:13px;padding:12px 0}
 .spinner-inline{display:inline-block;width:20px;height:20px;border:3px solid #334155;border-top-color:#6366f1;border-radius:50%;animation:spin .6s linear infinite;margin-right:6px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+.email-section{margin-top:14px;padding:14px;background:#0f172a;border-radius:10px;border:1px solid #334155}
+.email-section label{color:#94a3b8;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.email-row{display:flex;gap:10px;margin-top:6px;align-items:center}
+.email-row input{flex:1;padding:10px 12px;border:1px solid #475569;border-radius:8px;font-size:14px;background:#1e293b;color:#f1f5f9}
+.email-row input:focus{outline:none;border-color:#6366f1}
+.email-row .btn{flex:0 0 auto;width:auto;padding:10px 20px;background:#475569}
+.email-row .btn:hover{background:#64748b}
+.btn-mail{background:#475569!important}.btn-mail:hover{background:#64748b!important}
 @media(max-width:700px){
   body{padding:12px 8px}
   .container{padding:14px 10px}
   .controls{flex-direction:column}
   .controls .field{min-width:100%}
   .btn{width:100%}
+  .email-row{flex-direction:column}
+  .email-row .btn{width:100%}
 }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>CWIT Pune — S26 CSV Result</h1>
-  <p class="subtitle">Lookup from saved CSV (no live API)</p>
+  <p class="subtitle">Lookup from saved CSV &bull; Telegram notify</p>
 
   <div class="controls">
     <div class="field">
@@ -73,6 +83,15 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
 
   <div class="spinner" id="spinner"><span class="spinner-inline"></span>Searching...</div>
   <div id="output"></div>
+
+  <div class="email-section" id="emailSection" style="display:none">
+    <label>Email (optional — for contact on Telegram)</label>
+    <div class="email-row">
+      <input type="email" id="emailInput" placeholder="Your email for follow-up">
+      <button class="btn btn-mail" onclick="resendTelegram()">Re-send to Telegram</button>
+    </div>
+    <div id="emailStatus" style="color:#94a3b8;font-size:11px;margin-top:4px"></div>
+  </div>
 </div>
 
 <script>
@@ -81,6 +100,28 @@ const DEPT_LABELS = {
   mechanical:'Mechanical Engineering', etc:'Electronics & Telecommunication Engineering',
   comp:'Computer Engineering', comp_iot:'Computer Engineering & IoT',
 };
+
+let lastResult = null;
+let lastType = 'regular';
+
+function generateFingerprint() {
+  let fp = localStorage.getItem('cwit_fp');
+  if (fp) return fp;
+  const parts = [
+    navigator.userAgent, screen.width+'x'+screen.height+'x'+screen.colorDepth,
+    navigator.language||navigator.userLanguage,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.platform, navigator.hardwareConcurrency||'', navigator.deviceMemory||'',
+  ];
+  const raw = parts.join('|||');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+  fp = (hash >>> 0).toString(36);
+  localStorage.setItem('cwit_fp', fp);
+  return fp;
+}
+
+const DEVICE_FP = generateFingerprint();
 
 function maskRoll(r) { return r && r.length > 3 ? r.slice(0, -3) + '***' : r; }
 
@@ -135,12 +176,17 @@ async function searchResult() {
   const out = document.getElementById('output');
   const spin = document.getElementById('spinner');
   const btn = document.getElementById('searchBtn');
+  const emailSec = document.getElementById('emailSection');
 
   if (!roll) { out.innerHTML = '<div class="error-box">Enter a PRN</div>'; return; }
   spin.style.display = 'block'; btn.disabled = true; out.innerHTML = '';
+  emailSec.style.display = 'none';
+  lastResult = null;
 
   try {
-    const res = await fetch('/api/csvresult?type='+type+'&dept='+dept+'&roll='+encodeURIComponent(roll));
+    const email = document.getElementById('emailInput').value.trim();
+    const emailParam = email ? '&email='+encodeURIComponent(email) : '';
+    const res = await fetch('/api/csvresult?type='+type+'&dept='+dept+'&roll='+encodeURIComponent(roll)+emailParam+'&fp='+encodeURIComponent(DEVICE_FP));
     const data = await res.json();
     if (data.error) { out.innerHTML = '<div class="error-box">'+data.error+'</div>'; return; }
 
@@ -148,6 +194,9 @@ async function searchResult() {
       out.innerHTML = '<div class="not-found">No result found for <strong>'+roll+'</strong> in '+DEPT_LABELS[dept]+' ('+(type==='regular'?'S26 Regular':'S26 Backlog')+')</div>';
       return;
     }
+
+    lastResult = data;
+    lastType = type;
 
     const semLabel = type === 'regular' ? 'S26 Regular' : 'S26 Backlog';
     let html = '<div class="student-info">'+data.name+' ('+maskRoll(data.roll)+') &bull; '+data.dept+' &bull; '+semLabel+'</div>';
@@ -159,6 +208,7 @@ async function searchResult() {
       html += '<div class="not-found">No subject data in CSV</div>';
     }
     out.innerHTML = html;
+    emailSec.style.display = 'block';
   } catch(e) {
     out.innerHTML = '<div class="error-box">Request failed: '+e.message+'</div>';
   } finally {
@@ -166,7 +216,24 @@ async function searchResult() {
   }
 }
 
+function resendTelegram() {
+  const email = document.getElementById('emailInput').value.trim();
+  const status = document.getElementById('emailStatus');
+  if (!lastResult) { status.textContent = 'Search a result first'; return; }
+
+  status.textContent = 'Sending...';
+  const dept = document.getElementById('department').value;
+  const roll = lastResult.roll;
+  const emailParam = email ? '&email='+encodeURIComponent(email) : '';
+
+  fetch('/api/csvresult?type='+lastType+'&dept='+dept+'&roll='+encodeURIComponent(roll)+emailParam+'&fp='+encodeURIComponent(DEVICE_FP))
+    .then(r => r.json())
+    .then(() => { status.textContent = 'Sent to Telegram. Check your bot.'; })
+    .catch(() => { status.textContent = 'Failed.'; });
+}
+
 document.getElementById('rollInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchResult(); });
+document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendToTelegram(); });
 </script>
 </body>
 </html>

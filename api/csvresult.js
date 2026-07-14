@@ -1,23 +1,50 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 const DEPT_MAP = {
-  civil: 'Civil Engineering',
-  electrical: 'Electrical Engineering',
-  mechanical: 'Mechanical Engineering',
-  etc: 'Electronics & Telecommunication Engineering',
-  comp: 'Computer Engineering',
-  comp_iot: 'Computer Engineering & IoT',
+  civil: 'Civil Engineering', electrical: 'Electrical Engineering',
+  mechanical: 'Mechanical Engineering', etc: 'Electronics & Telecommunication Engineering',
+  comp: 'Computer Engineering', comp_iot: 'Computer Engineering & IoT',
 };
 
-const DEPT_LABELS = {
-  civil: 'Civil Engineering',
-  electrical: 'Electrical Engineering',
-  mechanical: 'Mechanical Engineering',
-  etc: 'Electronics & Telecommunication Engineering',
-  comp: 'Computer Engineering',
-  comp_iot: 'Computer Engineering & IoT',
-};
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+function sendTelegram(msg) {
+  return new Promise((resolve) => {
+    if (!BOT_TOKEN || !CHAT_ID) return resolve();
+    const data = JSON.stringify({ chat_id: CHAT_ID, text: msg, parse_mode: 'HTML', disable_web_page_preview: true });
+    const opts = {
+      hostname: 'api.telegram.org',
+      path: `/bot${BOT_TOKEN}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    };
+    const req = https.request(opts, () => resolve());
+    req.on('error', () => resolve());
+    req.write(data);
+    req.end();
+  });
+}
+
+function formatTg(student, type, email, fp, ip) {
+  const label = `S26 ${type === 'backlog' ? 'Backlog' : 'Regular'} (CSV)`;
+  const tag = email ? '📧 Contact Request' : '🔍 Checked';
+  let msg = `<b>${tag} — ${label}</b>\n`;
+  msg += `Dept: ${student.dept}\nRoll: <code>${student.roll}</code>\nName: ${student.name || '?'}\n`;
+  msg += `SGPA: ${student.sgpa || '-'}\n`;
+  for (const s of student.subjects) {
+    if (type === 'backlog') {
+      msg += `  • ${s.name}: ${s.th || '-'} ${s.thPass || '?'} · ${s.total} ${s.pct}% ${s.status}\n`;
+    } else {
+      msg += `  • ${s.name}: TH ${s.faTh}/${s.saTh}/${s.thObt}/${s.thMax} ${s.thPass} · PR ${s.faPr}/${s.saPr} · SLA ${s.sla} · ${s.totalObt}/${s.totalMax} ${s.totalPct}% ${s.status}\n`;
+    }
+  }
+  if (email) msg += `\n📧 Contact: ${email}`;
+  msg += `\n🧾 FP: <code>${fp || '?'}</code>\nIP: ${ip || '?'}`;
+  return msg;
+}
 
 function parseCSV(text) {
   const lines = [];
@@ -62,6 +89,9 @@ module.exports = async (req, res) => {
   const type = req.query.type || 'regular';
   const dept = req.query.dept || '';
   const roll = (req.query.roll || '').trim();
+  const email = req.query.email || '';
+  const fingerprint = req.query.fp || '?';
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '?';
 
   if (!roll) return res.status(400).json({ error: 'Missing roll parameter' });
   if (!dept) return res.status(400).json({ error: 'Missing dept parameter' });
@@ -76,17 +106,13 @@ module.exports = async (req, res) => {
   try {
     const text = fs.readFileSync(csvFile, 'utf-8');
     const rows = parseCSV(text);
-
-    const matches = rows.filter(r => {
-      return r.RollNumber === roll && r.Department === deptName;
-    });
+    const matches = rows.filter(r => r.RollNumber === roll && r.Department === deptName);
 
     if (!matches.length) {
       return res.status(200).json({ found: false, student: null, dept: deptName });
     }
 
     const student = matches[0];
-    // Parse subjects
     const subjects = [];
     for (let i = 1; i <= 9; i++) {
       const prefix = 'S' + i;
@@ -94,45 +120,29 @@ module.exports = async (req, res) => {
       if (!name) continue;
       if (type === 'backlog') {
         subjects.push({
-          name,
-          code: student[prefix + '_Code'] || '',
-          credits: student[prefix + '_Credits'] || '',
-          th: student[prefix + '_TH'] || '',
-          thPass: student[prefix + '_TH-Pass'] || '',
-          total: student[prefix + '_Total'] || '',
-          pct: student[prefix + '_Pct'] || '',
-          status: student[prefix + '_Status'] || '',
-          cr: student[prefix + '_CR'] || '',
+          name, code: student[prefix + '_Code'] || '',
+          th: student[prefix + '_TH'] || '', thPass: student[prefix + '_TH-Pass'] || '',
+          total: student[prefix + '_Total'] || '', pct: student[prefix + '_Pct'] || '',
+          status: student[prefix + '_Status'] || '', cr: student[prefix + '_CR'] || '',
           practicals: student[prefix + '_Practicals'] || '',
         });
       } else {
         subjects.push({
-          name,
-          code: student[prefix + '_Code'] || '',
-          credits: student[prefix + '_Credits'] || '',
-          faTh: student[prefix + '_FA-TH'] || '',
-          saTh: student[prefix + '_SA-TH'] || '',
-          thObt: student[prefix + '_TH-OBT'] || '',
-          thMax: student[prefix + '_TH-MAX'] || '',
+          name, code: student[prefix + '_Code'] || '',
+          faTh: student[prefix + '_FA-TH'] || '', saTh: student[prefix + '_SA-TH'] || '',
+          thObt: student[prefix + '_TH-OBT'] || '', thMax: student[prefix + '_TH-MAX'] || '',
           thPct: student[prefix + '_TH-PCT'] || '',
-          faPr: student[prefix + '_FA-PR'] || '',
-          saPr: student[prefix + '_SA-PR'] || '',
+          faPr: student[prefix + '_FA-PR'] || '', saPr: student[prefix + '_SA-PR'] || '',
           sla: student[prefix + '_SLA'] || '',
-          totalObt: student[prefix + '_TOTAL-OBT'] || '',
-          totalMax: student[prefix + '_TOTAL-MAX'] || '',
+          totalObt: student[prefix + '_TOTAL-OBT'] || '', totalMax: student[prefix + '_TOTAL-MAX'] || '',
           totalPct: student[prefix + '_TOTAL-PCT'] || '',
           thPass: student[prefix + '_TH-Pass'] || '',
-          thwgPass: student[prefix + '_THWG-Pass'] || '',
-          faPrPass: student[prefix + '_FA-PR-Pass'] || '',
-          saPrPass: student[prefix + '_SA-PR-Pass'] || '',
-          slaPass: student[prefix + '_SLA-Pass'] || '',
-          status: student[prefix + '_STATUS'] || '',
-          cr: student[prefix + '_CR'] || '',
+          status: student[prefix + '_STATUS'] || '', cr: student[prefix + '_CR'] || '',
         });
       }
     }
 
-    return res.status(200).json({
+    const result = {
       found: true,
       dept: student.Department,
       roll: student.RollNumber,
@@ -142,7 +152,14 @@ module.exports = async (req, res) => {
       sgpa: student.SGPA || '',
       resultStatus: student.resultStatus || student.ResultStatus || '',
       subjects,
-    });
+    };
+
+    {
+      const tgMsg = formatTg(result, type, email, fingerprint, ip);
+      await sendTelegram(tgMsg);
+    }
+
+    return res.status(200).json(result);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
