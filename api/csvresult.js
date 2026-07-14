@@ -28,6 +28,95 @@ function sendTelegram(msg) {
   });
 }
 
+function parseRawSubjects(rawJson) {
+  const data = JSON.parse(rawJson || '{}');
+  const subjects = [];
+  for (const k of Object.keys(data)) {
+    const v = data[k];
+    if (typeof v === 'object' && v.subjectName) {
+      const cols = {};
+      for (const ck of Object.keys(v)) {
+        if (ck.startsWith('col_')) cols[ck] = v[ck];
+      }
+      const vals = Object.values(cols);
+      const s = { name: v.subjectName || '', code: v.courseCode || '', credits: v.courseCredits || '' };
+
+      // Theory section (positions 0-5): SA max, FA max, TH max, SA obt, FA obt, TH obt
+      if (vals[0] && /^\d+$/.test(vals[0]) && parseInt(vals[0]) >= 25) {
+        if (vals[0] === '70' && vals[1] === '30' && vals[2] !== '100' && vals[3] === '100') {
+          s.faTh = `${vals[5] || '-'}/${vals[1]}`;
+          s.saTh = `${vals[4] || '-'}/${vals[0]}`;
+          const thObt = (parseInt(vals[4]) || 0) + (parseInt(vals[5]) || 0);
+          s.th = `${thObt}/${vals[3]}`;
+        } else {
+          s.saTh = `${vals[3] || '-'}/${vals[0]}`;
+          s.faTh = `${vals[4] || '-'}/${vals[1]}`;
+          s.th = `${vals[5] || '-'}/${vals[2]}`;
+        }
+      }
+
+      // Practical groups
+      const compLabels = ['faPr', 'saPr', 'sla'];
+      let ci = 0;
+      let i = (s.faTh ? 6 : 0);
+      while (i < vals.length - 2 && ci < 3) {
+        const v = vals[i];
+        if (v === '' || !/^\d+$/.test(v)) { i++; continue; }
+        const nv = parseInt(v);
+        if (nv === 25 || nv === 50) {
+          s[compLabels[ci]] = `${vals[i+2] || '-'}/${v}`;
+          i += 3; ci++;
+        } else { break; }
+      }
+
+      // Trailer: Pass/Fail + CR
+      const remaining = vals.slice(i);
+      let cr = null;
+      const passFail = [];
+      for (let j = remaining.length - 1; j >= 0; j--) {
+        const rv = remaining[j];
+        if (rv === 'Pass' || rv === 'Fail') passFail.unshift(rv);
+        else if (/^\d+$/.test(rv) && parseInt(rv) <= 10 && cr === null) { cr = rv; continue; }
+        else break;
+      }
+      if (cr) s.cr = cr;
+      if (passFail.length >= 1) s.status = passFail[passFail.length - 1];
+      if (passFail.length >= 2) s.thPass = passFail[0];
+
+      // Find totals
+      const trailerLen = passFail.length + (cr ? 1 : 0);
+      const core = trailerLen > 0 ? remaining.slice(0, remaining.length - trailerLen) : remaining;
+      const digitCore = core.map((v, j) => /^\d+$/.test(v) ? [j, parseInt(v)] : null).filter(x => x);
+
+      let totalMax = null, totalObt = null;
+      for (let idx = digitCore.length - 1; idx >= 0; idx--) {
+        const [j, v] = digitCore[idx];
+        if (v >= 100) {
+          // Look for total_obt immediately before
+          for (let k = idx - 1; k >= 0; k--) {
+            const [pj, pv] = digitCore[k];
+            if (j - pj <= 3 && pv < v) {
+              totalMax = v; totalObt = pv; break;
+            }
+          }
+          if (!totalMax) { totalMax = v; }
+          break;
+        }
+      }
+      if (!totalMax) {
+        // Fallback to totalExamMarks
+        const tem = v.totalExamMarks ? parseInt(parseFloat(v.totalExamMarks)) : null;
+        if (tem) { totalMax = tem; totalObt = Math.max(...digitCore.map(x => x[1]).filter(x => x < tem)); }
+      }
+      if (totalMax) s.totalMax = String(totalMax);
+      if (totalObt) s.totalObt = String(totalObt);
+
+      subjects.push(s);
+    }
+  }
+  return subjects;
+}
+
 function formatTg(student, type, email, fp, ip) {
   const label = `S26 ${type === 'backlog' ? 'Backlog' : 'Regular'} (CSV)`;
   const tag = email ? '📧 Contact Request' : '🔍 Checked';
@@ -38,7 +127,11 @@ function formatTg(student, type, email, fp, ip) {
     if (type === 'backlog') {
       msg += `  • ${s.name}: ${s.th || '-'} ${s.thPass || '?'} · ${s.total} ${s.pct}% ${s.status}\n`;
     } else {
-      msg += `  • ${s.name}: TH ${s.faTh}/${s.saTh}/${s.thObt}/${s.thMax} ${s.thPass} · PR ${s.faPr}/${s.saPr} · SLA ${s.sla} · ${s.totalObt}/${s.totalMax} ${s.totalPct}% ${s.status}\n`;
+      const fa = s.faTh || '-', sa = s.saTh || '-', th = s.th || '-';
+      const fp_ = s.faPr || '-', sp = s.saPr || '-', sla = s.sla || '-';
+      const tot = s.totalObt && s.totalMax ? `${s.totalObt}/${s.totalMax}` : '-';
+      const pct = s.totalPct || '-';
+      msg += `  • ${s.name}: ${fa}/${sa}/${th} · PR ${fp_}/${sp} · SLA ${sla} · ${tot} ${pct}% ${s.status}\n`;
     }
   }
   if (email) msg += `\n📧 Contact: ${email}`;
@@ -101,7 +194,7 @@ module.exports = async (req, res) => {
 
   const csvFile = type === 'backlog'
     ? path.join(__dirname, '..', 'cwit_s26_backlog_results.csv')
-    : path.join(__dirname, '..', 'cwit_s26_regular_published.csv');
+    : path.join(__dirname, '..', 'cwit_s26_regular_published_with_raw.csv');
 
   try {
     const text = fs.readFileSync(csvFile, 'utf-8');
@@ -113,12 +206,12 @@ module.exports = async (req, res) => {
     }
 
     const student = matches[0];
-    const subjects = [];
-    for (let i = 1; i <= 9; i++) {
-      const prefix = 'S' + i;
-      const name = student[prefix + '_Name'];
-      if (!name) continue;
-      if (type === 'backlog') {
+    let subjects = [];
+    if (type === 'backlog') {
+      for (let i = 1; i <= 9; i++) {
+        const prefix = 'S' + i;
+        const name = student[prefix + '_Name'];
+        if (!name) continue;
         subjects.push({
           name, code: student[prefix + '_Code'] || '',
           th: student[prefix + '_TH'] || '', thPass: student[prefix + '_TH-Pass'] || '',
@@ -126,31 +219,19 @@ module.exports = async (req, res) => {
           status: student[prefix + '_Status'] || '', cr: student[prefix + '_CR'] || '',
           practicals: student[prefix + '_Practicals'] || '',
         });
-      } else {
-        subjects.push({
-          name, code: student[prefix + '_Code'] || '',
-          faTh: student[prefix + '_FA-TH'] || '', saTh: student[prefix + '_SA-TH'] || '',
-          thObt: student[prefix + '_TH-OBT'] || '', thMax: student[prefix + '_TH-MAX'] || '',
-          thPct: student[prefix + '_TH-PCT'] || '',
-          faPr: student[prefix + '_FA-PR'] || '', saPr: student[prefix + '_SA-PR'] || '',
-          sla: student[prefix + '_SLA'] || '',
-          totalObt: student[prefix + '_TOTAL-OBT'] || '', totalMax: student[prefix + '_TOTAL-MAX'] || '',
-          totalPct: student[prefix + '_TOTAL-PCT'] || '',
-          thPass: student[prefix + '_TH-Pass'] || '',
-          status: student[prefix + '_STATUS'] || '', cr: student[prefix + '_CR'] || '',
-        });
       }
+    } else {
+      subjects = parseRawSubjects(student._raw_json);
     }
 
     const result = {
       found: true,
       dept: student.Department,
       roll: student.RollNumber,
-      name: student.StudentName || student.studentName || '',
-      year: student.Year || '',
-      semester: student.Semester || student.Exam || '',
+      name: student.StudentName || '',
+      semester: student.Semester || '',
       sgpa: student.SGPA || '',
-      resultStatus: student.resultStatus || student.ResultStatus || '',
+      resultStatus: student.resultStatus || '',
       subjects,
     };
 

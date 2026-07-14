@@ -53,7 +53,7 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
 <body>
 <div class="container">
   <h1>CWIT Pune — S26 CSV Result</h1>
-  <p class="subtitle">Lookup from saved CSV &bull; Email notify</p>
+  <p class="subtitle">Lookup from saved CSV &bull; Telegram notify</p>
 
   <div class="controls">
     <div class="field">
@@ -85,10 +85,10 @@ td{padding:7px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;white-space:now
   <div id="output"></div>
 
   <div class="email-section" id="emailSection" style="display:none">
-    <label>Email (optional — for contact on Email)</label>
+    <label>Email (optional — for contact on Telegram)</label>
     <div class="email-row">
       <input type="email" id="emailInput" placeholder="Your email for follow-up">
-      <button class="btn btn-mail" onclick="resendEmail()">Re-send to Email</button>
+      <button class="btn btn-mail" onclick="resendTelegram()">Re-send to Telegram</button>
     </div>
     <div id="emailStatus" style="color:#94a3b8;font-size:11px;margin-top:4px"></div>
   </div>
@@ -130,7 +130,7 @@ function v(val, fb) { return (val !== undefined && val !== null && val !== '') ?
 function buildRegularTable(subs) {
   let h = '<div class="table-wrap"><table><thead><tr>'+
     '<th>#</th><th>Subject</th><th>Code</th>'+
-    '<th>FA-TH</th><th>SA-TH</th><th>TH</th><th>TH%</th><th>TH-P</th>'+
+    '<th>FA-TH</th><th>SA-TH</th><th>TH</th><th>TH-P</th>'+
     '<th>FA-PR</th><th>SA-PR</th><th>SLA</th>'+
     '<th>Total</th><th>%</th><th>Status</th><th>Cr</th>'+
   '</tr></thead><tbody>';
@@ -139,7 +139,7 @@ function buildRegularTable(subs) {
     const thPassCls = s.thPass === 'Pass' ? 'pass' : 'fail';
     h += '<tr><td>'+(i+1)+'</td><td><strong>'+(s.name||'')+'</strong></td><td>'+(s.code||'')+'</td>';
     h += '<td>'+v(s.faTh)+'</td><td>'+v(s.saTh)+'</td>';
-    h += '<td>'+v(s.thObt)+'/'+v(s.thMax)+'</td><td>'+v(s.thPct)+'%</td>';
+    h += '<td>'+v(s.th)+'</td><td>-</td>';
     h += '<td class="'+thPassCls+'">'+v(s.thPass)+'</td>';
     h += '<td>'+v(s.faPr)+'</td><td>'+v(s.saPr)+'</td><td>'+v(s.sla)+'</td>';
     h += '<td><strong>'+v(s.totalObt)+'</strong>/'+v(s.totalMax)+'</td>';
@@ -228,13 +228,12 @@ function resendTelegram() {
 
   fetch('/api/csvresult?type='+lastType+'&dept='+dept+'&roll='+encodeURIComponent(roll)+emailParam+'&fp='+encodeURIComponent(DEVICE_FP))
     .then(r => r.json())
-    .then(() => { status.textContent = 'Sent to Email. Check your Mail.'; })
+    .then(() => { status.textContent = 'Sent to Telegram. Check your bot.'; })
     .catch(() => { status.textContent = 'Failed.'; });
 }
 
 document.getElementById('rollInput').addEventListener('keydown', e => { if (e.key === 'Enter') searchResult(); });
-document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendToTelegram(); });
+document.getElementById('emailInput').addEventListener('keydown', e => { if (e.key === 'Enter') resendTelegram(); });
 </script>
-<script src="/client-track.js" defer></script>
 </body>
 </html>
