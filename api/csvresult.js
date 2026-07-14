@@ -71,17 +71,24 @@ function parseCSV(text) {
   const headers = parseLine(lines[0]);
   const rows = [];
   let mismatchCount = 0;
+  let sampleHeaderLen = headers.length;
+  let sampleValsLen = 0;
   for (let i = 1; i < lines.length; i++) {
     const vals = parseLine(lines[i]);
+    if (i === 1) sampleValsLen = vals.length;
     if (vals.length && vals.length === headers.length) {
       const obj = {};
       headers.forEach((h, idx) => { obj[h] = vals[idx]; });
       rows.push(obj);
     } else {
       mismatchCount++;
+      if (mismatchCount <= 1) {
+        sampleHeaderLen = headers.length;
+        sampleValsLen = vals.length;
+      }
     }
   }
-  return { headers, rows, totalLines: lines.length - 1, mismatchCount };
+  return { headers, rows, totalLines: lines.length - 1, mismatchCount, sampleHeaderLen, sampleValsLen };
 }
 
 function parseRawSubjects(rawJson) {
