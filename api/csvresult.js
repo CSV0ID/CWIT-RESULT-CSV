@@ -139,14 +139,47 @@ function formatTg(student, type, email, fp, ip) {
   return msg;
 }
 
+function parseLine(line) {
+  const result = [];
+  let current = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 function parseCSV(text) {
   const lines = [];
   let current = '', inQuotes = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '"') { inQuotes = !inQuotes; continue; }
-    if (ch === '\n' && !inQuotes) { lines.push(current); current = ''; continue; }
-    current += ch;
+    if (ch === '"') {
+      if (inQuotes && i + 1 < text.length && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === '\n' && !inQuotes) {
+      lines.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
   }
   if (current) lines.push(current);
   if (!lines.length) return [];
@@ -161,19 +194,6 @@ function parseCSV(text) {
     }
   }
   return rows;
-}
-
-function parseLine(line) {
-  const result = [];
-  let current = '', inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; continue; }
-    if (ch === ',' && !inQuotes) { result.push(current); current = ''; continue; }
-    current += ch;
-  }
-  result.push(current);
-  return result;
 }
 
 module.exports = async (req, res) => {
