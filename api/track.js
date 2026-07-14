@@ -83,28 +83,28 @@ module.exports = async function handler(req, res) {
 
   // -------- Build Telegram message (HTML) --------
   const L = [];
-  L.push('🔔 <b>New Visitor To Website</b>');
+  L.push('🔔👁️ <b>New Visitor To Website</b>');
   L.push('');
-  L.push('🌐 <b>Network</b>');
-  L.push('• IP: <code>' + esc(ip) + '</code>');
-  if (c.webrtcIps) L.push('• WebRTC/local IPs: <code>' + esc(c.webrtcIps) + '</code>');
-  L.push('• Location: ' + esc([city, region, country].filter(Boolean).join(', ')));
-  if (isp) L.push('• ISP: ' + esc(isp));
-  if (mapLink) L.push('• Map: <a href="' + esc(mapLink) + '">' + esc(lat + ',' + lon) + '</a>');
+  L.push('🛜 <b>Network</b>');
+  L.push('• 🔌 IP: <code>' + esc(ip) + '</code>');
+  if (c.webrtcIps) L.push('📡 WebRTC/local IPs: <code>' + esc(c.webrtcIps) + '</code>');
+  L.push('📍 Location: ' + esc([city, region, country].filter(Boolean).join(', ')));
+  if (isp) L.push('🏢 ISP: ' + esc(isp));
+  if (mapLink) L.push('🗺️ Map: <a href="' + esc(mapLink) + '">' + esc(lat + ',' + lon) + '</a>');
   if (c.connection) {
     const n = c.connection;
-    L.push('• Conn: ' + esc(n.effectiveType) + ' · ' + esc(n.downlink) + 'Mbps' +
+    L.push('📶 Conn: ' + esc(n.effectiveType) + ' · ' + esc(n.downlink) + 'Mbps' +
       (n.downlinkMax ? '/' + esc(n.downlinkMax) + 'max' : '') + ' · rtt ' + esc(n.rtt) + 'ms' +
       (n.type ? ' · ' + esc(n.type) : '') + (n.saveData ? ' · saveData' : ''));
   }
   if (c.perf) {
     const p = c.perf;
-    L.push('• Timing: ttfb ' + esc(p.ttfb) + 'ms · dns ' + esc(p.dns) + 'ms · tcp ' + esc(p.tcp) + 'ms · dom ' + esc(p.domLoad) + 'ms');
+    L.push('⏱️ Timing: ttfb ' + esc(p.ttfb) + 'ms · dns ' + esc(p.dns) + 'ms · tcp ' + esc(p.tcp) + 'ms · dom ' + esc(p.domLoad) + 'ms');
   }
 
   L.push('');
-  L.push('💻 <b>Device / Browser</b>');
-  L.push('• UA: <code>' + esc(ua) + '</code>');
+  L.push('📱 <b>Device / Browser</b>');
+  L.push('🧭 UA: <code>' + esc(ua) + '</code>');
   if (c.uaData) L.push('• Hints: ' + esc(c.uaData));
   if (c.uaHighEntropy) {
     const u = c.uaHighEntropy;
@@ -112,46 +112,46 @@ module.exports = async function handler(req, res) {
     L.push('• Arch: ' + esc(u.arch) + ' ' + esc(u.bitness) + (u.wow64 ? ' wow64' : '') +
       ' · Model: ' + esc(u.model) + ' · OS: ' + esc(u.platformVersion));
   }
-  L.push('• Platform: ' + esc(c.platform) + ' · Vendor: ' + esc(c.vendor) + (c.oscpu ? ' · ' + esc(c.oscpu) : ''));
-  L.push('• CPU cores: ' + esc(c.cores) + ' · RAM: ' + esc(c.ram) + 'GB');
-  if (c.jsHeap) L.push('• JS heap: ' + esc(c.jsHeap.used) + '/' + esc(c.jsHeap.limit) + 'MB');
-  if (c.storage) L.push('• Storage: ' + esc(c.storage.usedMB) + 'MB used / ' + esc(c.storage.quotaGB) + 'GB quota');
-  L.push('• Touch points: ' + esc(c.touch));
-  L.push('• Languages: ' + esc(c.languages || lang) + ' · Locale: ' + esc(c.locale));
-  L.push('• Timezone: ' + esc(c.timezone) + ' (offset ' + esc(c.tzOffset) + ')');
-  L.push('• Screen: ' + esc(c.screen) + ' (avail ' + esc(c.availScreen) + ') · Viewport: ' + esc(c.viewport) + ' · DPR ' + esc(c.dpr));
+  L.push('🏷️ Platform: ' + esc(c.platform) + ' · Vendor: ' + esc(c.vendor) + (c.oscpu ? ' · ' + esc(c.oscpu) : ''));
+  L.push('⚙️ CPU cores: ' + esc(c.cores) + ' · RAM: ' + esc(c.ram) + 'GB');
+  if (c.jsHeap) L.push('🧠 JS heap: ' + esc(c.jsHeap.used) + '/' + esc(c.jsHeap.limit) + 'MB');
+  if (c.storage) L.push('💾 Storage: ' + esc(c.storage.usedMB) + 'MB used / ' + esc(c.storage.quotaGB) + 'GB quota');
+  L.push('👆 Touch points: ' + esc(c.touch));
+  L.push('🗣️ Languages: ' + esc(c.languages || lang) + ' · Locale: ' + esc(c.locale));
+  L.push('🕐 Timezone: ' + esc(c.timezone) + ' (offset ' + esc(c.tzOffset) + ')');
+  L.push('🖥️ Screen: ' + esc(c.screen) + ' (avail ' + esc(c.availScreen) + ') · Viewport: ' + esc(c.viewport) + ' · DPR ' + esc(c.dpr));
   if (c.outerWindow) L.push('• Window: ' + esc(c.outerWindow) + ' @ ' + esc(c.screenPos) + (c.orientation ? ' · ' + esc(c.orientation) : ''));
-  L.push('• Color depth: ' + esc(c.colorDepth) + '/' + esc(c.pixelDepth) + ' · Dark mode: ' + esc(c.darkMode));
-  L.push('• cookies=' + esc(c.cookieEnabled) + ' · DNT=' + esc(c.doNotTrack) + ' · pdf=' + esc(c.pdfViewer) + ' · plugins=' + esc(c.plugins));
-  if (c.keyboardLayout) L.push('• Keyboard: ' + esc(c.keyboardLayout));
-  if (c.permissions) L.push('• Permissions: ' + esc(c.permissions));
-  if (c.battery) L.push('• Battery: ' + esc(c.battery.level) + '% ' + (c.battery.charging ? '(charging)' : '(on battery)'));
+  L.push('🎨 Color depth: ' + esc(c.colorDepth) + '/' + esc(c.pixelDepth) + ' · Dark mode: ' + esc(c.darkMode));
+  L.push('🍪 cookies=' + esc(c.cookieEnabled) + ' · DNT=' + esc(c.doNotTrack) + ' · pdf=' + esc(c.pdfViewer) + ' · plugins=' + esc(c.plugins));
+  if (c.keyboardLayout) L.push('⌨️ Keyboard: ' + esc(c.keyboardLayout));
+  if (c.permissions) L.push('🔐 Permissions: ' + esc(c.permissions));
+  if (c.battery) L.push('🔋 Battery: ' + esc(c.battery.level) + '% ' + (c.battery.charging ? '(charging)' : '(on battery)'));
 
   L.push('');
-  L.push('🧬 <b>Fingerprint</b>');
-  L.push('• Persistent ID: <code>' + esc(c.persistentId) + '</code>');
-  L.push('• GPU: ' + esc(c.gpu) + (c.glVersion ? ' · ' + esc(c.glVersion) : '') +
+  L.push('🔮 <b>Fingerprint</b>');
+  L.push('🪪 Persistent ID: <code>' + esc(c.persistentId) + '</code>');
+  L.push('🎮 GPU: ' + esc(c.gpu) + (c.glVersion ? ' · ' + esc(c.glVersion) : '') +
     (c.glMaxTexture ? ' · maxTex ' + esc(c.glMaxTexture) : '') + (c.glExts ? ' · ' + esc(c.glExts) : ''));
-  L.push('• Canvas: <code>' + esc(c.canvasHash) + '</code> · Audio: <code>' + esc(c.audioHash) + '</code> · Math: <code>' + esc(c.mathHash) + '</code>');
-  if (c.fonts) L.push('• Fonts: ' + esc(c.fonts));
-  if (c.voices) L.push('• Voices: ' + esc(c.voices));
+  L.push('🖨️ Canvas: <code>' + esc(c.canvasHash) + '</code> · Audio: <code>' + esc(c.audioHash) + '</code> · Math: <code>' + esc(c.mathHash) + '</code>');
+  if (c.fonts) L.push('🔤 Fonts: ' + esc(c.fonts));
+  if (c.voices) L.push('🔊 Voices: ' + esc(c.voices));
   if (c.codecs) {
     const cd = c.codecs;
-    L.push('• Codecs: h264=' + esc(cd.h264) + ' av1=' + esc(cd.av1) + ' hevc=' + esc(cd.hevc) + ' webm=' + esc(cd.webm));
+    L.push('🎞️ Codecs: h264=' + esc(cd.h264) + ' av1=' + esc(cd.av1) + ' hevc=' + esc(cd.hevc) + ' webm=' + esc(cd.webm));
   }
   if (c.features) {
     const f = c.features;
-    L.push('• Display: gamut=' + esc(f.gamut) + ' hdr=' + esc(f.hdr) + ' pointer=' + esc(f.pointer) +
+    L.push('✨ Display: gamut=' + esc(f.gamut) + ' hdr=' + esc(f.hdr) + ' pointer=' + esc(f.pointer) +
       ' hover=' + esc(f.hover) + ' contrast=' + esc(f.contrast) +
       (f.reducedMotion ? ' reduced-motion' : '') + (f.forcedColors ? ' forced-colors' : '') +
       (f.invertedColors ? ' inverted' : '') + (f.monochrome ? ' monochrome' : ''));
   }
-  if (c.webdriver) L.push('• ⚠️ Automation/bot flag: true');
+  if (c.webdriver) L.push('🤖 ⚠️ Automation/bot flag: true');
 
   L.push('');
-  L.push('📄 <b>Visit</b>');
-  L.push('• Page: ' + esc(c.page) + (c.title ? ' — ' + esc(c.title) : ''));
-  L.push('• Referrer: ' + esc(referer || c.referrer));
+  L.push('🌍 <b>Visit</b>');
+  L.push('📌 Page: ' + esc(c.page) + (c.title ? ' — ' + esc(c.title) : ''));
+  L.push('↩️ Referrer: ' + esc(referer || c.referrer));
   if (dnt) L.push('• DNT header: ' + esc(dnt));
 
   const text = L.join('\n').slice(0, 4000); // Telegram 4096 char cap
